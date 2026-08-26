@@ -1,0 +1,24 @@
+[project]
+name = "safetensors-arch"
+version = "0.1.0"
+description = "Tell what a .safetensors file actually is, by its tensor table — not its filename or vendor metadata."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["safetensors", "lora", "diffusion", "sdxl", "model-inspection"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+safetensors-arch = "safetensors_arch.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
