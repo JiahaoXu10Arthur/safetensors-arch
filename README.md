@@ -1,5 +1,7 @@
 # safetensors-arch
 
+[![test](https://github.com/JiahaoXu10Arthur/safetensors-arch/actions/workflows/test.yml/badge.svg)](https://github.com/JiahaoXu10Arthur/safetensors-arch/actions/workflows/test.yml)
+
 Tell what a `.safetensors` file actually is — by reading its tensor table,
 not its filename and not the metadata the model host attached to it.
 

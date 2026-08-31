@@ -3,6 +3,7 @@ name = "safetensors-arch"
 version = "0.1.0"
 description = "Tell what a .safetensors file actually is, by its tensor table — not its filename or vendor metadata."
 readme = "README.md"
+authors = [{ name = "Jiahao Xu" }]
 requires-python = ">=3.9"
 license = { text = "MIT" }
 keywords = ["safetensors", "lora", "diffusion", "sdxl", "model-inspection"]
@@ -12,6 +13,10 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/JiahaoXu10Arthur/safetensors-arch"
+Issues = "https://github.com/JiahaoXu10Arthur/safetensors-arch/issues"
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
