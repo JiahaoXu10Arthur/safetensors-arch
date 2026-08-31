@@ -158,6 +158,9 @@ pytest -q
 Tests build synthetic safetensors headers in a temp directory, so no model
 weights are needed to run them.
 
+See [DESIGN.md](DESIGN.md) for why it is shaped this way, what was
+rejected, and what to check before changing it.
+
 ## License
 
 MIT
