@@ -5,10 +5,10 @@ not its filename and not the metadata the model host attached to it.
 
 ```console
 $ python -m safetensors_arch models/loras/
-emilia-v1.safetensors        lora:sdxl        2958 tensors of delta weights; keys carry input_blocks / lora_te (SDXL family)
-anima-emilia.safetensors     lora:dit-adaln    840 tensors of delta weights; keys carry adaln_modulation / cross_attn_k_proj
-AnimeEditV2.safetensors      lora:sdxl        2958 tensors of delta weights; keys carry input_blocks / lora_te (SDXL family)
-base_v10.safetensors         dit-adaln         685 tensors with adaln_modulation_cross_attn and no delta markers (full DiT)
+style-a.safetensors      lora:sdxl        2958 tensors of delta weights; keys carry input_blocks / lora_te (SDXL family)
+style-b.safetensors      lora:dit-adaln    840 tensors of delta weights; keys carry adaln_modulation / cross_attn_k_proj
+mislabelled.safetensors  lora:sdxl        2958 tensors of delta weights; keys carry input_blocks / lora_te (SDXL family)
+base_v10.safetensors     dit-adaln         685 tensors with adaln_modulation_cross_attn and no delta markers (full DiT)
 ```
 
 ```python
@@ -109,12 +109,42 @@ Adding a family is a couple of lines in `detect()` plus a test with a
 synthetic header. Pull requests welcome — especially ones that bring a real
 file's key list, since that is the only way the table grows correctly.
 
+## Prior art
+
+Reading a `.safetensors` tensor table to work out what a file is has been done
+before, so that is not the claim here.
+
+- **[SafetensorsModelInspector][smi]** classifies by tensor keys across a wide
+  family table — Flux, SDXL, Wan, Hunyuan, Qwen and more — and recognises
+  LoRA/LyCORIS/LoHa/LoKr/DoRA. It is a PyQt6 desktop application, so it wants a
+  GUI stack and a human at the keyboard.
+- **[sai_model_spec_tools][sai]** is mostly Ruby scripts for *writing* SAI
+  model-spec metadata into a file, plus one Python script that reads it back
+  and flags a `CONTRADICTION DETECTED` when the declared base model disagrees
+  with what the keys suggest. Its author calls the scripts basic sketches.
+
+What neither of them answers is the question this package exists for:
+**given this delta and this base model, would attaching them do anything at
+all?** `is_compatible()` is one call, it returns `None` rather than guessing
+when the pair is unfamiliar, and it is the whole reason to prefer a
+zero-dependency library over a desktop inspector.
+
+Two smaller differences worth stating plainly, since they are the practical
+ones: this reads only the header, never the weights, so a directory of 20 GB
+checkpoints classifies in milliseconds; and it imports nothing outside the
+standard library, so it drops into a build step or a CI job without pulling a
+GUI toolkit behind it.
+
+The [ordering trap](#the-ordering-trap) above is the part I would most like
+someone to take even if they use one of the others instead.
+
 ## Install / test
 
+Not on PyPI. From a clone:
+
 ```console
-pip install -e .
-pip install -e ".[test]"
-pytest
+pip install .            # or -e ".[test]" to run the suite
+pytest -q
 ```
 
 Tests build synthetic safetensors headers in a temp directory, so no model
@@ -123,3 +153,6 @@ weights are needed to run them.
 ## License
 
 MIT
+
+[smi]: https://github.com/MNeMoNiCuZ/SafetensorsModelInspector
+[sai]: https://github.com/FNGarvin/sai_model_spec_tools
