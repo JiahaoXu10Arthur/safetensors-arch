@@ -52,11 +52,20 @@ brought a family the table has never seen, and it would be turned off.
 cannot argue with is one you cannot trust: when it is wrong you need to see
 *which marker* it matched to know whether to fix the file or fix the rule.
 
-## Decision: the trainer's own declaration wins when present
+## Decision: the trainer's own declaration speaks only where the keys do not
 
-Some trainers write `modelspec.architecture` into the header, and that is the
-most reliable signal available. But the file still has to look like a delta
-first — the field is optional and occasionally aspirational.
+Some trainers write `modelspec.architecture` into the header. It is useful —
+written by the code that produced the weights, not by whoever published them —
+but it is still a claim someone typed, and this package's whole position is
+that the tensor table is not. So it never overrules a family the keys named.
+It is consulted at one point only: after the file is established as a delta
+and after every key-based family test has come back empty, where the choice is
+between a named family and `lora:unknown`.
+
+It also does not get to borrow the keys' reasons. A file declaring the adaln
+lineage whose keys carry no adaln marker used to come back
+`lora:dit-adaln, keys carry adaln_modulation / cross_attn_k_proj` — the right
+answer citing evidence it never had. A declared family now says so.
 
 ## What the evidence actually is
 

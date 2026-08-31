@@ -96,10 +96,13 @@ guard exists to stop the *definitely wrong* pairing. If it blocked everything
 it did not recognise, it would be useless the first time someone brings a
 family the table has never seen.
 
-**The trainer's own declaration wins when present.** Some trainers write
-`modelspec.architecture` into the header. That is the most reliable signal
-available — but the file still has to look like a delta first, because the
-field is optional and occasionally aspirational.
+**The trainer's own declaration only speaks where the keys do not.** Some
+trainers write `modelspec.architecture` into the header. It is worth reading —
+the code that produced the weights wrote it — but it is a claim, and the point
+of this package is that the tensor table is not. So it never overrules a family
+the keys named; it is consulted only once the file is established as a delta
+and no key-based test has recognised the family, where the alternative is
+`lora:unknown`. The answer says when it came from there.
 
 ## Recognised kinds
 

@@ -157,3 +157,47 @@ def test_a_delta_marker_past_the_sampling_window_is_still_a_delta(tmp_path):
     keys.append("diffusion_model.blocks.0.attn.lora_A.weight")
     p = write(tmp_path, keys)
     assert detect(p)[0] == "lora:dit-adaln"
+
+
+def test_the_declaration_speaks_only_where_the_keys_do_not(tmp_path):
+    # Nothing in the tensor names says which family this delta targets. The
+    # trainer wrote it down, and a named family is worth more than unknown --
+    # but only here, where the data itself said nothing.
+    p = write(tmp_path, ["net.layer.lora_down.weight", "net.layer.lora_up.weight"],
+              metadata={"modelspec.architecture": "qwen-image/lora"})
+    kind, why = detect(p)
+    assert kind == "lora:qwen-image"
+    assert "trainer declared" in why
+
+
+def test_the_keys_outrank_the_declaration_when_they_disagree(tmp_path):
+    # A declaration is a claim someone's code typed; the tensor table is what
+    # the weights are. When both speak, the table wins.
+    p = write(tmp_path, ["lora_unet_input_blocks_1.lora_down.weight"],
+              metadata={"modelspec.architecture": "qwen-image/lora"})
+    assert detect(p)[0] == "lora:sdxl"
+
+
+def test_a_declared_family_does_not_claim_markers_the_keys_lack(tmp_path):
+    # The reason has to describe the evidence actually used. Saying the keys
+    # carry adaln_modulation about a file whose keys carry nothing of the sort
+    # is the one thing a classifier you are meant to argue with must not do.
+    p = write(tmp_path, ["blocks.0.qkv.lora_down.weight"],
+              metadata={"modelspec.architecture": "anima/lora"})
+    kind, why = detect(p)
+    assert kind == "lora:dit-adaln"
+    assert "adaln_modulation" not in why
+
+
+def test_no_declaration_and_no_family_evidence_is_still_unknown(tmp_path):
+    p = write(tmp_path, ["net.layer.lora_down.weight"])
+    assert detect(p)[0] == "lora:unknown"
+
+
+def test_a_declaration_does_not_overrule_a_family_the_keys_named(tmp_path):
+    # The sharpest form of the rule. The trainer declared the adaln lineage;
+    # the keys carry SDXL structure. The table is what the weights are, so it
+    # wins, and the declaration is left to the cases where nothing else spoke.
+    p = write(tmp_path, ["lora_unet_input_blocks_1.lora_down.weight"],
+              metadata={"modelspec.architecture": "anima/lora"})
+    assert detect(p)[0] == "lora:sdxl"

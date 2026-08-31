@@ -52,6 +52,17 @@ HEADER_LIMIT = 100 * 1024 * 1024
 LORA_MARKERS = ("lora_down", ".lora_A", ".lora_B", "lora_up",
                 "lora_unet_", "lora_te", ".alpha")
 
+#: Substrings a trainer's ``modelspec.architecture`` may carry, and the family
+#: each one names. Consulted only where the tensor keys named no family at
+#: all: a declaration is a claim someone's code typed, so it never overrules
+#: the table, but where the table is silent a named family beats ``unknown``.
+_DECLARED_FAMILIES = (
+    ("anima", "lora:dit-adaln"),
+    ("qwen", "lora:qwen-image"),
+    ("sdxl", "lora:sdxl"),
+    ("stable-diffusion-xl", "lora:sdxl"),
+)
+
 Result = Tuple[str, str]
 """``(kind, why)``. ``why`` is a human-readable sentence, meant to be shown."""
 
@@ -141,7 +152,7 @@ def detect(path) -> Result:
 
     # --- is it a delta? decide this FIRST; see module docstring ---
     if any(m in all_keys for m in LORA_MARKERS):
-        if "anima" in spec or "adaln_modulation" in blob or "cross_attn_k_proj" in blob:
+        if "adaln_modulation" in blob or "cross_attn_k_proj" in blob:
             return ("lora:dit-adaln",
                     "%d tensors of delta weights; keys carry "
                     "adaln_modulation / cross_attn_k_proj%s" % (len(keys), note))
@@ -153,6 +164,16 @@ def detect(path) -> Result:
             return ("lora:qwen-image",
                     "%d tensors of delta weights; transformer_blocks + "
                     "add_k_proj (Qwen-Image)%s" % (len(keys), note))
+        # The keys named no family. Only now does the declaration get a say,
+        # and the reason records that the answer came from it rather than
+        # from a marker -- a classifier you are meant to argue with must not
+        # cite evidence it did not use.
+        for marker, kind in _DECLARED_FAMILIES:
+            if marker in spec:
+                return (kind,
+                        "%d tensors of delta weights; the keys name no "
+                        "family, but the trainer declared %s"
+                        % (len(keys), spec))
         return ("lora:unknown",
                 "%d tensors of delta weights, but the target family is not "
                 "recognised%s" % (len(keys), note))
