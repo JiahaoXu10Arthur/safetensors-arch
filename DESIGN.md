@@ -78,6 +78,15 @@ disagreements between folder and detected family.
 
 ## Before you change anything
 
+**The delta question is asked over every key; the family question is not.**
+`detect()` scans all keys for the delta markers and only a 400-key prefix for
+the family markers, and the asymmetry is deliberate. A delta marker missed
+returns a confident `dit-adaln` for something that is a LoRA — the misfiling
+the ordering above exists to prevent. A family marker missed returns
+`lora:unknown`, which is an answer this package is content to give. Both sides
+sampled the prefix once, and a LoRA whose delta markers sorted past key 400
+came back a full checkpoint.
+
 **Tests build synthetic headers.** `struct.pack("<Q", len(blob)) + blob` plus
 JSON — no model files in the repo, and none needed, because only the header is
 ever read.

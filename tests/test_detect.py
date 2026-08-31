@@ -144,3 +144,16 @@ def test_compatibility(lora, base, expected):
     brings a family the table has never seen.
     """
     assert is_compatible(lora, base) is expected
+
+
+def test_a_delta_marker_past_the_sampling_window_is_still_a_delta(tmp_path):
+    # The delta check and the full-model check must see the same keys. When
+    # the delta check sampled a prefix and the full-model check scanned
+    # everything, a LoRA whose delta markers sorted late was classified as a
+    # checkpoint -- the exact misfiling the ordering in this module exists to
+    # prevent, and the one that fails silently downstream.
+    keys = ["diffusion_model.blocks.%d.adaln_modulation_cross_attn.weight" % i
+            for i in range(450)]
+    keys.append("diffusion_model.blocks.0.attn.lora_A.weight")
+    p = write(tmp_path, keys)
+    assert detect(p)[0] == "lora:dit-adaln"

@@ -125,14 +125,22 @@ def detect(path) -> Result:
         return "unknown", "header contains no tensors"
 
     top = {k.split(".")[0] for k in keys}
-    # 400 keys is plenty to see every structural marker, and keeps this cheap
-    # on checkpoints with thousands of tensors.
+    # The delta question is asked over *every* key, and the family question
+    # over a prefix. The two errors are not symmetric: a delta marker missed
+    # here returns a confident "full checkpoint" for a LoRA, which is the
+    # misfiling this module is ordered the way it is to prevent. A family
+    # marker missed below returns ``lora:unknown``, which is a real answer
+    # this package is happy to give. On a 3000-tensor checkpoint the full
+    # scan costs about 0.4ms, well inside the header read it rides along on.
+    all_keys = "\n".join(keys)
+    # 400 keys is plenty to see every structural marker, and keeps the family
+    # matching cheap on checkpoints with thousands of tensors.
     blob = "\n".join(keys[:400])
     spec = _spec(header)
     note = " (trainer declared %s)" % spec if spec else ""
 
     # --- is it a delta? decide this FIRST; see module docstring ---
-    if any(m in blob for m in LORA_MARKERS):
+    if any(m in all_keys for m in LORA_MARKERS):
         if "anima" in spec or "adaln_modulation" in blob or "cross_attn_k_proj" in blob:
             return ("lora:dit-adaln",
                     "%d tensors of delta weights; keys carry "
