@@ -87,14 +87,38 @@ disagreements between folder and detected family.
 
 ## Before you change anything
 
-**The delta question is asked over every key; the family question is not.**
-`detect()` scans all keys for the delta markers and only a 400-key prefix for
-the family markers, and the asymmetry is deliberate. A delta marker missed
-returns a confident `dit-adaln` for something that is a LoRA — the misfiling
-the ordering above exists to prevent. A family marker missed returns
-`lora:unknown`, which is an answer this package is content to give. Both sides
-sampled the prefix once, and a LoRA whose delta markers sorted past key 400
-came back a full checkpoint.
+**Both questions are asked over every key, and the argument for sampling was
+wrong twice.** `detect()` originally read a 400-key prefix for both. The delta
+question was fixed first: a LoRA whose delta markers sorted past key 400 came
+back a full checkpoint. The family question was left sampling, on an asymmetry
+argument written into the fix — that a missed delta marker answers confidently
+and wrongly, while a missed family marker only costs a `lora:unknown`, an answer
+this package is content to give.
+
+That argument was false, and the code it was written next to disproves it. The
+family branches are **ordered**. A missed marker does not fall through to
+`lora:unknown` at the bottom; it falls through to the *next branch*, which
+answers confidently. An Anima delta writes its 588 text-encoder tensors before
+its adaln blocks, so `cross_attn_k_proj` sits at index 588, the prefix ended at
+400, and the SDXL branch fired on `lora_te` alone. 16 of 266 files in a real
+collection came back `lora:sdxl` while every metadata field on them said
+`anima` — and `is_compatible` then reported them loadable onto an SDXL
+checkpoint, which is precisely the load-does-nothing failure this package was
+built to catch. Fixing the window changed those 16 and nothing else.
+
+The lesson is not "scan everything." It is that **an escape hatch is only as
+safe as the branch it actually lands in**, and the sampling argument had never
+been checked against the control flow one screen below it.
+
+**`lora_te` alone is not an SDXL marker, and the SDXL branch treats it as one.**
+In all 16 files above, `input_blocks` and `output_blocks` were absent; the only
+thing making them look SDXL was `lora_te`, which is the sd-scripts text-encoder
+prefix that Anima's trainer (`networks.lora_anima`, an sd-scripts derivative)
+emits too. Scanning every key **masks** this rather than removing it, because
+the adaln branch is tested first and now sees its marker. It is left standing
+deliberately: tightening the branch to require `input_blocks` / `output_blocks`
+would need a real `lora_te`-only SDXL LoRA to prove it breaks nothing, and no
+such file was on hand. If you have one, that is the pull request.
 
 **Tests build synthetic headers.** `struct.pack("<Q", len(blob)) + blob` plus
 JSON — no model files in the repo, and none needed, because only the header is

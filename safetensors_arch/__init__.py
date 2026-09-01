@@ -136,31 +136,34 @@ def detect(path) -> Result:
         return "unknown", "header contains no tensors"
 
     top = {k.split(".")[0] for k in keys}
-    # The delta question is asked over *every* key, and the family question
-    # over a prefix. The two errors are not symmetric: a delta marker missed
-    # here returns a confident "full checkpoint" for a LoRA, which is the
-    # misfiling this module is ordered the way it is to prevent. A family
-    # marker missed below returns ``lora:unknown``, which is a real answer
-    # this package is happy to give. On a 3000-tensor checkpoint the full
-    # scan costs about 0.4ms, well inside the header read it rides along on.
+    # Both questions are asked over *every* key. The family question used to
+    # read a 400-key prefix, on the argument that a missed family marker only
+    # costs a ``lora:unknown``. That argument was wrong: the family branches
+    # are ordered, so a missed marker does not fall through to ``unknown``, it
+    # falls through to the *next branch*, which answers confidently and wrongly.
+    # An Anima delta writes its 588 text-encoder tensors first, putting
+    # ``cross_attn_k_proj`` at index 588; the prefix ended at 400, and the SDXL
+    # branch fired on ``lora_te`` alone. 16 of 266 real files were misfiled that
+    # way, and ``is_compatible`` then called them loadable onto an SDXL
+    # checkpoint -- the load-does-nothing failure this module exists to catch.
+    # On a 3000-tensor checkpoint the full scan costs about 0.4ms, well inside
+    # the header read it rides along on.
     all_keys = "\n".join(keys)
-    # 400 keys is plenty to see every structural marker, and keeps the family
-    # matching cheap on checkpoints with thousands of tensors.
-    blob = "\n".join(keys[:400])
     spec = _spec(header)
     note = " (trainer declared %s)" % spec if spec else ""
 
     # --- is it a delta? decide this FIRST; see module docstring ---
     if any(m in all_keys for m in LORA_MARKERS):
-        if "adaln_modulation" in blob or "cross_attn_k_proj" in blob:
+        if "adaln_modulation" in all_keys or "cross_attn_k_proj" in all_keys:
             return ("lora:dit-adaln",
                     "%d tensors of delta weights; keys carry "
                     "adaln_modulation / cross_attn_k_proj%s" % (len(keys), note))
-        if "input_blocks" in blob or "lora_te" in blob or "output_blocks" in blob:
+        if ("input_blocks" in all_keys or "lora_te" in all_keys
+                or "output_blocks" in all_keys):
             return ("lora:sdxl",
                     "%d tensors of delta weights; keys carry "
                     "input_blocks / lora_te (SDXL family)%s" % (len(keys), note))
-        if "transformer_blocks" in blob and "add_k_proj" in blob:
+        if "transformer_blocks" in all_keys and "add_k_proj" in all_keys:
             return ("lora:qwen-image",
                     "%d tensors of delta weights; transformer_blocks + "
                     "add_k_proj (Qwen-Image)%s" % (len(keys), note))

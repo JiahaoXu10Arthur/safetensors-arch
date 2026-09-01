@@ -201,3 +201,19 @@ def test_a_declaration_does_not_overrule_a_family_the_keys_named(tmp_path):
     p = write(tmp_path, ["lora_unet_input_blocks_1.lora_down.weight"],
               metadata={"modelspec.architecture": "anima/lora"})
     assert detect(p)[0] == "lora:sdxl"
+
+
+def test_a_family_marker_past_the_sampling_window_still_names_the_family(tmp_path):
+    # The sibling of the test above, and the reason the family question stopped
+    # sampling too. An Anima delta writes its 588 text-encoder tensors first and
+    # its adaln blocks after, so cross_attn_k_proj lands past any prefix. Missing
+    # it does not degrade to lora:unknown -- the family branches are ordered, so
+    # the next one fires on lora_te alone and returns a confident lora:sdxl.
+    # That answer then reads as compatible with an SDXL checkpoint, which is the
+    # load-does-nothing failure this package exists to catch.
+    keys = ["lora_te_layers_%d_mlp_down_proj.lora_down.weight" % i
+            for i in range(588)]
+    keys += ["lora_unet_blocks_%d_cross_attn_k_proj.lora_down.weight" % i
+             for i in range(84)]
+    p = write(tmp_path, keys, metadata={"modelspec.architecture": "anima-preview/lora"})
+    assert detect(p)[0] == "lora:dit-adaln"
