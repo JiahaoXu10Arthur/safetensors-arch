@@ -7,9 +7,9 @@ not its filename and not the metadata the model host attached to it.
 
 ```console
 $ python -m safetensors_arch models/loras/
-style-a.safetensors      lora:sdxl        2958 tensors of delta weights; keys carry input_blocks / lora_te (SDXL family)
-style-b.safetensors      lora:dit-adaln    840 tensors of delta weights; keys carry adaln_modulation / cross_attn_k_proj
-base_v10.safetensors     dit-adaln         685 tensors with adaln_modulation_cross_attn and no delta markers (full DiT)
+base_v10.safetensors  sdxl-checkpoint     2515 tensors; model. + conditioner. + first_stage_model. (full SDXL-family checkpoint)
+style-a.safetensors   lora:sdxl           2958 tensors of delta weights; keys carry down_blocks / up_blocks / mid_block (trainer declared stable-diffusion-xl/lora)
+style-b.safetensors   lora:dit-adaln      1428 tensors of delta weights; keys carry cross_attn_k_proj (trainer declared anima-preview/lora)
 ```
 
 ```python
@@ -48,7 +48,9 @@ The two things people normally check both lie in practice:
   family had the tensor layout of another. The field is self-reported and
   frequently just wrong.
 
-The tensor table does not lie. An SDXL UNet delta has `input_blocks`. A
+The tensor table does not lie. An SDXL UNet delta has the UNet block names, in
+whichever spelling its trainer used — `input_blocks` / `output_blocks` /
+`middle_block`, or `down_blocks` / `up_blocks` / `mid_block`. A
 Cosmos-style DiT delta has `adaln_modulation`. Qwen-Image has
 `transformer_blocks` with an `add_k_proj` text branch. Those names come from
 the code that produced the weights.

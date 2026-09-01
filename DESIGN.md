@@ -110,15 +110,26 @@ The lesson is not "scan everything." It is that **an escape hatch is only as
 safe as the branch it actually lands in**, and the sampling argument had never
 been checked against the control flow one screen below it.
 
-**`lora_te` alone is not an SDXL marker, and the SDXL branch treats it as one.**
+**`lora_te` is not an SDXL marker, and it no longer sits in the SDXL row.**
 In all 16 files above, `input_blocks` and `output_blocks` were absent; the only
 thing making them look SDXL was `lora_te`, which is the sd-scripts text-encoder
 prefix that Anima's trainer (`networks.lora_anima`, an sd-scripts derivative)
-emits too. Scanning every key **masks** this rather than removing it, because
-the adaln branch is tested first and now sees its marker. It is left standing
-deliberately: tightening the branch to require `input_blocks` / `output_blocks`
-would need a real `lora_te`-only SDXL LoRA to prove it breaks nothing, and no
-such file was on hand. If you have one, that is the pull request.
+emits too. Scanning every key only **masked** that, because the adaln branch is
+tested first.
+
+Removing it was blocked on a claim that turned out to be a guess: *"no real
+`lora_te`-only SDXL LoRA on hand."* Measured instead, 2 of the 99 `lora:sdxl`
+files were exactly that — and the reason they were is that they are written in
+**diffusers** UNet naming (`down_blocks` / `up_blocks` / `mid_block`) while the
+branch only knew **compvis** naming (`input_blocks` / …). Both spellings are
+now matched, which leaves **0 of 266 files** relying on `lora_te`, so it could
+come out.
+
+Recheck this before adding a family: the guard is that every file the branch
+claims carries a real structural marker. A text-encoder-only SDXL LoRA — no
+UNet keys at all — now falls to the declaration or to `lora:unknown`. That is
+the intended direction: `lora:unknown` is an answer this package is content to
+give, a confident wrong family is not.
 
 **Tests build synthetic headers.** `struct.pack("<Q", len(blob)) + blob` plus
 JSON — no model files in the repo, and none needed, because only the header is

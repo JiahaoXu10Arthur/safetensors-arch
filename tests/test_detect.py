@@ -217,3 +217,62 @@ def test_a_family_marker_past_the_sampling_window_still_names_the_family(tmp_pat
              for i in range(84)]
     p = write(tmp_path, keys, metadata={"modelspec.architecture": "anima-preview/lora"})
     assert detect(p)[0] == "lora:dit-adaln"
+
+
+def test_diffusers_style_sdxl_keys_name_the_family(tmp_path):
+    """SDXL UNets are written two ways. The compvis names (input_blocks,
+    output_blocks) were matched; the diffusers names (down_blocks, up_blocks,
+    mid_block) were not, so a diffusers-style LoRA with no text-encoder keys
+    and no declaration fell through to lora:unknown with unambiguous SDXL
+    structure sitting in its keys."""
+    # The first key is a real one, kept whole because it carries a trap: a
+    # diffusers SDXL key contains ``transformer_blocks``, which is also half
+    # of the Qwen-Image test. SDXL is tried first and Qwen additionally
+    # requires ``add_k_proj``; reorder those two and this file changes family.
+    p = write(tmp_path, [
+        "lora_unet_down_blocks_2_attentions_1_transformer_blocks_8"
+        "_attn1_to_out_0.lora_down.weight",
+        "lora_unet_up_blocks_0_attentions_0_proj_in.lora_down.weight",
+        "lora_unet_mid_block_attentions_0_proj_out.lora_down.weight",
+    ])
+    assert detect(p)[0] == "lora:sdxl"
+
+
+def test_the_reason_names_the_marker_that_actually_matched(tmp_path):
+    """Two real files declared stable-diffusion-xl, carried diffusers UNet
+    keys plus lora_te, and came back "keys carry input_blocks / lora_te" --
+    with no input_blocks anywhere in the file. Right answer, invented
+    evidence, which is the one thing a classifier you are meant to argue with
+    must not do."""
+    p = write(tmp_path, [
+        "lora_te1_text_model_encoder_layers_0_mlp_fc1.lora_down.weight",
+        "lora_unet_down_blocks_2_attentions_1_attn1_to_out_0.lora_down.weight",
+    ], metadata={"modelspec.architecture": "stable-diffusion-xl/lora"})
+    kind, why = detect(p)
+    assert kind == "lora:sdxl"
+    assert "down_blocks" in why
+    assert "input_blocks" not in why
+
+
+def test_the_adaln_reason_does_not_claim_both_markers(tmp_path):
+    """Same defect in the adaln branch: the 16 Anima files carry
+    cross_attn_k_proj and no adaln_modulation, and the reason named both."""
+    p = write(tmp_path, [
+        "lora_unet_blocks_0_cross_attn_k_proj.lora_down.weight",
+    ])
+    kind, why = detect(p)
+    assert kind == "lora:dit-adaln"
+    assert "cross_attn_k_proj" in why
+    assert "adaln_modulation" not in why
+
+
+def test_lora_te_alone_no_longer_claims_the_sdxl_family(tmp_path):
+    """lora_te is the sd-scripts text-encoder prefix, not an SDXL structure
+    marker; networks.lora_anima emits it too. Standing alone it must not name
+    a family -- degrading to the declaration, or to lora:unknown, is an answer
+    this package is content to give. A confident wrong family is not."""
+    p = write(tmp_path, [
+        "lora_te_layers_0_mlp_down_proj.lora_down.weight",
+        "lora_te_layers_0_mlp_down_proj.lora_up.weight",
+    ])
+    assert detect(p)[0] == "lora:unknown"

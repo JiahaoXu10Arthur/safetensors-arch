@@ -52,6 +52,23 @@ HEADER_LIMIT = 100 * 1024 * 1024
 LORA_MARKERS = ("lora_down", ".lora_A", ".lora_B", "lora_up",
                 "lora_unet_", "lora_te", ".alpha")
 
+#: Structural markers that name a delta's target family, tested in this order.
+#: Only *structure* belongs here. ``lora_te`` used to sit in the SDXL row and
+#: does not any more: it is the sd-scripts text-encoder prefix, and
+#: ``networks.lora_anima`` is an sd-scripts derivative that emits it too, so
+#: standing alone it names no family. Sixteen Anima deltas were called
+#: ``lora:sdxl`` on that basis alone.
+#:
+#: SDXL UNets are written two ways and both are real evidence: compvis
+#: (``input_blocks``) and diffusers (``down_blocks``). Matching only the first
+#: left a diffusers-style LoRA with unambiguous SDXL structure in its keys
+#: falling through to ``lora:unknown``.
+_FAMILY_MARKERS = (
+    ("lora:dit-adaln", ("adaln_modulation", "cross_attn_k_proj")),
+    ("lora:sdxl", ("input_blocks", "output_blocks", "middle_block",
+                   "down_blocks", "up_blocks", "mid_block")),
+)
+
 #: Substrings a trainer's ``modelspec.architecture`` may carry, and the family
 #: each one names. Consulted only where the tensor keys named no family at
 #: all: a declaration is a claim someone's code typed, so it never overrules
@@ -104,8 +121,9 @@ def detect(path) -> Result:
         (the Cosmos-Predict2 / "Anima" lineage).
     ``lora:sdxl``
         Delta weights over an SDXL-family UNet (SDXL, Pony, Illustrious,
-        NoobAI, ...). Marked by ``input_blocks`` / ``output_blocks`` /
-        ``lora_te``.
+        NoobAI, ...). Marked by the UNet block names, in either spelling:
+        ``input_blocks`` / ``output_blocks`` / ``middle_block`` (compvis) or
+        ``down_blocks`` / ``up_blocks`` / ``mid_block`` (diffusers).
     ``lora:qwen-image``
         Delta weights over the Qwen-Image DiT. Also transformer blocks, but
         named ``transformer_blocks`` with an ``add_k_proj`` text branch, which
@@ -154,15 +172,17 @@ def detect(path) -> Result:
 
     # --- is it a delta? decide this FIRST; see module docstring ---
     if any(m in all_keys for m in LORA_MARKERS):
-        if "adaln_modulation" in all_keys or "cross_attn_k_proj" in all_keys:
-            return ("lora:dit-adaln",
-                    "%d tensors of delta weights; keys carry "
-                    "adaln_modulation / cross_attn_k_proj%s" % (len(keys), note))
-        if ("input_blocks" in all_keys or "lora_te" in all_keys
-                or "output_blocks" in all_keys):
-            return ("lora:sdxl",
-                    "%d tensors of delta weights; keys carry "
-                    "input_blocks / lora_te (SDXL family)%s" % (len(keys), note))
+        # The reason names the markers that actually matched, never the row
+        # they came from. Naming the whole row is how a file carrying only
+        # cross_attn_k_proj came back "keys carry adaln_modulation /
+        # cross_attn_k_proj", and two real SDXL files came back "keys carry
+        # input_blocks / lora_te" with no input_blocks in them at all: the
+        # right answer citing evidence it did not have.
+        for kind, markers in _FAMILY_MARKERS:
+            hit = [m for m in markers if m in all_keys]
+            if hit:
+                return (kind, "%d tensors of delta weights; keys carry %s%s"
+                        % (len(keys), " / ".join(hit), note))
         if "transformer_blocks" in all_keys and "add_k_proj" in all_keys:
             return ("lora:qwen-image",
                     "%d tensors of delta weights; transformer_blocks + "
