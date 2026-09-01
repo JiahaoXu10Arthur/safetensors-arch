@@ -153,10 +153,14 @@ someone to take even if they use one of the others instead.
 
 ## Install / test
 
-Not on PyPI. From a clone:
+```console
+pip install safetensors-arch
+```
+
+Or from a clone, to run the suite:
 
 ```console
-pip install .            # or -e ".[test]" to run the suite
+pip install -e ".[test]"
 pytest -q
 ```
 
