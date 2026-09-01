@@ -29,6 +29,49 @@ error points at the loader — nowhere near the cause. The order is fixed and
 load-bearing, and `tests/test_detect.py::test_dit_lora_is_not_a_checkpoint`
 pins it.
 
+## Decision: family order is settled by a matrix, not by taste
+
+Flux and Wan were added by pulling **ten real vendor headers** over HTTP Range
+from public HuggingFace repositories — only the header, never the weights,
+which is the same trick `detect()` itself uses. Then measuring which substrings
+actually separate the families, across those ten plus the 266 local files:
+
+| substring | FLUX | QWEN | WAN | adaln | SDXL |
+|---|---|---|---|---|---|
+| `single_transformer_blocks` | 2/4 | 0/3 | 0/3 | 0/165 | 0/101 |
+| `double_blocks` | 2/4 | 0/3 | 0/3 | 0/165 | 0/101 |
+| `add_k_proj` | **2/4** | **2/3** | 0/3 | 0/165 | 0/101 |
+| `ffn` | 0/4 | 0/3 | **2/3** | **0/165** | 0/101 |
+| `diffusion_model.blocks.` | 0/4 | 0/3 | **2/3** | **22/165** | 0/101 |
+| `transformer_blocks` | 2/4 | 3/3 | 0/3 | 0/165 | **101/101** |
+
+Three things fall out of that table, and none of them were guessable:
+
+- **Flux must be decided before Qwen.** The diffusers layout writes
+  `transformer.single_transformer_blocks.N.attn...` and carries `add_k_proj`,
+  which is both halves of the Qwen test. Two of the four real Flux LoRAs were
+  coming back `lora:qwen-image` — a confident wrong family, the failure this
+  package exists to prevent.
+- **`ffn` separates Wan from the adaln lineage; `diffusion_model.blocks.` does
+  not.** 22 local Anima files share that prefix. Writing the Wan rule around
+  the prefix would have manufactured a fresh false answer for all 22.
+- **Qwen goes last.** `transformer_blocks` alone is evidence of nothing: every
+  one of the 101 SDXL LoRAs carries it inside
+  `lora_unet_down_blocks_2_attentions_1_transformer_blocks_8_...`.
+
+Two of the ten samples are pinned as `lora:unknown` on purpose. One carries
+only the generic `transformer_blocks`; the other names no family in its keys at
+all and its `ss_base_model_version` says `minimax_h3` while its repository is
+named for Wan. Neither can be resolved from the file, and inventing a marker to
+claim them would be exactly the failure the rest of this document is about.
+
+Adding a family means extending the matrix, not adding a row to the table and
+hoping. The fixture is `tests/fixtures/real_families.json.gz` — complete key
+lists in file order, gzipped because they are 489 KB of highly repetitive text
+against a 16 KB package. **Do not truncate them**: a shortened list hides
+exactly the bug this module has been fixed for twice, where a marker sits past
+a scan window.
+
 ## Decision: `unknown` is a real answer
 
 `lora:unknown` means "definitely a delta, target family not recognised". It is

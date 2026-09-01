@@ -50,10 +50,19 @@ The two things people normally check both lie in practice:
 
 The tensor table does not lie. An SDXL UNet delta has the UNet block names, in
 whichever spelling its trainer used — `input_blocks` / `output_blocks` /
-`middle_block`, or `down_blocks` / `up_blocks` / `mid_block`. A
-Cosmos-style DiT delta has `adaln_modulation`. Qwen-Image has
-`transformer_blocks` with an `add_k_proj` text branch. Those names come from
-the code that produced the weights.
+`middle_block`, or `down_blocks` / `up_blocks` / `mid_block`. A Cosmos-style
+DiT delta has `adaln_modulation`. Flux has `double_blocks` / `single_blocks`,
+or `single_transformer_blocks` from diffusers. Wan has
+`diffusion_model.blocks.` with `ffn`. Qwen-Image has `transformer_blocks` with
+an `add_k_proj` text branch. Those names come from the code that produced the
+weights.
+
+Those markers are not guesses. They were read off ten real vendor headers
+pulled from public repositories, and the order they are tested in was settled
+by which substrings actually separate the families on that evidence — Flux and
+Qwen share `add_k_proj`, Wan and the adaln lineage share
+`diffusion_model.blocks.`, and every SDXL LoRA carries `transformer_blocks`.
+The headers are committed as a fixture.
 
 ## The ordering trap
 

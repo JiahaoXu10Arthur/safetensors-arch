@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 __all__ = ["read_header", "detect", "Result", "HEADER_LIMIT"]
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 #: Refuse to read a "header" larger than this; a real one is kilobytes.
 HEADER_LIMIT = 100 * 1024 * 1024
@@ -49,8 +49,14 @@ HEADER_LIMIT = 100 * 1024 * 1024
 #: Substrings that mark a file as a *delta* (LoRA/LoCon/LyCORIS) rather than a
 #: full model. ``.alpha`` is included because some trainers emit alpha scalars
 #: alongside otherwise unlabelled up/down pairs.
+#: ``.down.weight`` / ``.up.weight`` are here because XLabs writes
+#: ``double_blocks.0.processor.proj_lora1.down.weight`` -- no ``lora_down``, no
+#: ``.alpha``, no ``lora_A``. Without them that file matched nothing and fell
+#: through to the full-model branch, coming back plain ``unknown``: not even
+#: recognised as an increment. ``.diff_b`` is the Wan distill spelling.
 LORA_MARKERS = ("lora_down", ".lora_A", ".lora_B", "lora_up",
-                "lora_unet_", "lora_te", ".alpha")
+                "lora_unet_", "lora_te", ".alpha",
+                ".down.weight", ".up.weight", ".diff_b")
 
 #: Structural markers that name a delta's target family, tested in this order.
 #: Only *structure* belongs here. ``lora_te`` used to sit in the SDXL row and
@@ -63,10 +69,25 @@ LORA_MARKERS = ("lora_down", ".lora_A", ".lora_B", "lora_up",
 #: (``input_blocks``) and diffusers (``down_blocks``). Matching only the first
 #: left a diffusers-style LoRA with unambiguous SDXL structure in its keys
 #: falling through to ``lora:unknown``.
+#: Each row is ``(kind, any_of, all_of)``: at least one substring from
+#: ``any_of`` must appear, and every substring in ``all_of`` must appear.
+#: Order is load-bearing and was settled by measurement, not by taste --
+#: see DESIGN.md for the matrix over ten real vendor headers.
+#:
+#: Flux comes first because the diffusers layout writes
+#: ``transformer.single_transformer_blocks.N.attn...`` and carries
+#: ``add_k_proj``, which is both halves of the Qwen test: two of four real
+#: Flux LoRAs were returning ``lora:qwen-image``. Qwen comes last because
+#: ``transformer_blocks`` alone is not evidence of anything -- every one of
+#: the 101 SDXL LoRAs in the local corpus carries it too.
 _FAMILY_MARKERS = (
-    ("lora:dit-adaln", ("adaln_modulation", "cross_attn_k_proj")),
+    ("lora:flux", ("double_blocks", "single_blocks",
+                   "single_transformer_blocks"), ()),
+    ("lora:wan", ("ffn",), ("diffusion_model.blocks.",)),
+    ("lora:dit-adaln", ("adaln_modulation", "cross_attn_k_proj"), ()),
     ("lora:sdxl", ("input_blocks", "output_blocks", "middle_block",
-                   "down_blocks", "up_blocks", "mid_block")),
+                   "down_blocks", "up_blocks", "mid_block"), ()),
+    ("lora:qwen-image", ("add_k_proj",), ("transformer_blocks",)),
 )
 
 #: Substrings a trainer's ``modelspec.architecture`` may carry, and the family
@@ -75,6 +96,8 @@ _FAMILY_MARKERS = (
 #: the table, but where the table is silent a named family beats ``unknown``.
 _DECLARED_FAMILIES = (
     ("anima", "lora:dit-adaln"),
+    ("flux", "lora:flux"),
+    ("wan", "lora:wan"),
     ("qwen", "lora:qwen-image"),
     ("sdxl", "lora:sdxl"),
     ("stable-diffusion-xl", "lora:sdxl"),
@@ -124,10 +147,19 @@ def detect(path) -> Result:
         NoobAI, ...). Marked by the UNet block names, in either spelling:
         ``input_blocks`` / ``output_blocks`` / ``middle_block`` (compvis) or
         ``down_blocks`` / ``up_blocks`` / ``mid_block`` (diffusers).
+    ``lora:flux``
+        Delta weights over a Flux DiT. Written three ways in the wild --
+        ``double_blocks`` / ``single_blocks`` (kohya, XLabs) and
+        ``single_transformer_blocks`` (diffusers) -- and decided before
+        Qwen, which it would otherwise be mistaken for.
+    ``lora:wan``
+        Delta weights over a Wan video DiT: ``diffusion_model.blocks.`` with
+        ``ffn``. The prefix alone is shared with the adaln lineage; ``ffn``
+        is what separates them.
     ``lora:qwen-image``
-        Delta weights over the Qwen-Image DiT. Also transformer blocks, but
-        named ``transformer_blocks`` with an ``add_k_proj`` text branch, which
-        is how it is told apart from the adaln lineage.
+        Delta weights over the Qwen-Image DiT: ``transformer_blocks`` with an
+        ``add_k_proj`` text branch. Decided last, because ``transformer_blocks``
+        on its own is carried by every SDXL LoRA too.
     ``lora:unknown``
         Definitely a delta, but the target family is not recognised.
     ``dit-adaln``
@@ -178,15 +210,14 @@ def detect(path) -> Result:
         # cross_attn_k_proj", and two real SDXL files came back "keys carry
         # input_blocks / lora_te" with no input_blocks in them at all: the
         # right answer citing evidence it did not have.
-        for kind, markers in _FAMILY_MARKERS:
-            hit = [m for m in markers if m in all_keys]
+        for kind, any_of, all_of in _FAMILY_MARKERS:
+            if not all(m in all_keys for m in all_of):
+                continue
+            hit = [m for m in any_of if m in all_keys]
             if hit:
+                cited = list(all_of) + hit
                 return (kind, "%d tensors of delta weights; keys carry %s%s"
-                        % (len(keys), " / ".join(hit), note))
-        if "transformer_blocks" in all_keys and "add_k_proj" in all_keys:
-            return ("lora:qwen-image",
-                    "%d tensors of delta weights; transformer_blocks + "
-                    "add_k_proj (Qwen-Image)%s" % (len(keys), note))
+                        % (len(keys), " / ".join(cited), note))
         # The keys named no family. Only now does the declaration get a say,
         # and the reason records that the answer came from it rather than
         # from a marker -- a classifier you are meant to argue with must not

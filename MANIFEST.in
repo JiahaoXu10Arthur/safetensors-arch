@@ -3,6 +3,9 @@
 # JSON fixtures were left out and `pytest` on an unpacked sdist failed at
 # collection -- an sdist that looks like it contains its tests and does not.
 recursive-include tests *.json
+# The real-header fixture is gzipped: the full key lists are 489 KB of
+# highly repetitive text, and this package is otherwise 16 KB.
+recursive-include tests *.json.gz
 
 # The design notes are the part of these repos worth reading before changing
 # anything, so a source distribution that omits them is missing the reasoning.

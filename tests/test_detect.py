@@ -276,3 +276,67 @@ def test_lora_te_alone_no_longer_claims_the_sdxl_family(tmp_path):
         "lora_te_layers_0_mlp_down_proj.lora_up.weight",
     ])
     assert detect(p)[0] == "lora:unknown"
+
+
+# ------------------------------------------- real headers, real families
+
+def _real_families():
+    import gzip
+    import pathlib
+    f = pathlib.Path(__file__).parent / "fixtures" / "real_families.json.gz"
+    return json.loads(gzip.decompress(f.read_bytes()))["samples"]
+
+
+def _from_keys(tmp_path, keys, spec=None, name="probe.safetensors"):
+    return write(tmp_path, keys,
+                 metadata={"modelspec.architecture": spec} if spec else None,
+                 name=name)
+
+
+@pytest.mark.parametrize("s", _real_families(), ids=lambda s: s["source"])
+def test_real_family_headers_classify_as_recorded(s, tmp_path):
+    """Real headers pulled over HTTP Range from public repos.
+
+    Synthetic cases only prove the matcher fires on shapes already known.
+    These are the shapes vendors actually ship, in file order, complete --
+    a truncated list would hide the very bug this module was fixed for twice.
+    """
+    p = _from_keys(tmp_path, s["keys"], s.get("modelspec_architecture"))
+    assert detect(p)[0] == s["expect"]
+
+
+def test_a_flux_lora_is_not_mistaken_for_qwen_image(tmp_path):
+    """Two of the four real Flux LoRAs came back lora:qwen-image. The diffusers
+    layout writes transformer.single_transformer_blocks.N.attn... and carries
+    add_k_proj, which is both halves of the Qwen test. Flux has to be decided
+    first, and on a marker Qwen does not share."""
+    flux = [s for s in _real_families()
+            if s["expect"] == "lora:flux" and "add_k_proj" in "\n".join(s["keys"])]
+    assert flux, "fixture should contain a Flux sample carrying add_k_proj"
+    for s in flux:
+        p = _from_keys(tmp_path, s["keys"], name=s["source"].replace("/", "_") + ".st")
+        assert detect(p)[0] == "lora:flux"
+
+
+def test_a_wan_lora_is_not_mistaken_for_the_adaln_lineage(tmp_path):
+    """Both write diffusion_model.blocks.N.cross_attn.* -- 22 files in the
+    local corpus share that prefix with Wan. ffn separates them; cross_attn
+    alone does not."""
+    wan = [s for s in _real_families() if s["expect"] == "lora:wan"]
+    for s in wan:
+        p = _from_keys(tmp_path, s["keys"], name=s["source"].replace("/", "_") + ".st")
+        assert detect(p)[0] == "lora:wan"
+
+
+def test_a_delta_whose_increment_is_spelled_down_weight_is_still_a_delta(tmp_path):
+    """XLabs writes double_blocks.0.processor.proj_lora1.down.weight -- no
+    lora_down, no .alpha, no lora_A. LORA_MARKERS missed it entirely, so the
+    file fell through to the full-model branch and came back plain `unknown`:
+    not even recognised as an increment."""
+    p = write(tmp_path, [
+        "double_blocks.0.processor.proj_lora1.down.weight",
+        "double_blocks.0.processor.proj_lora1.up.weight",
+    ])
+    kind, why = detect(p)
+    assert kind == "lora:flux"
+    assert "delta weights" in why
