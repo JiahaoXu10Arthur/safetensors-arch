@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 __all__ = ["read_header", "detect", "Result", "HEADER_LIMIT"]
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 #: Refuse to read a "header" larger than this; a real one is kilobytes.
 HEADER_LIMIT = 100 * 1024 * 1024
@@ -80,10 +80,20 @@ LORA_MARKERS = ("lora_down", ".lora_A", ".lora_B", "lora_up",
 #: Flux LoRAs were returning ``lora:qwen-image``. Qwen comes last because
 #: ``transformer_blocks`` alone is not evidence of anything -- every one of
 #: the 101 SDXL LoRAs in the local corpus carries it too.
+#:
+#: The Wan row asks for ``blocks.`` and ``cross_attn``, not for the
+#: ``diffusion_model.`` prefix it used to require. A real Wan 2.2 delta that
+#: writes its keys as ``blocks.N.cross_attn...`` was falling through to
+#: ``lora:unknown`` purely over that prefix. The looser pair is not a guess:
+#: over 335 real headers -- 266 local files, 59 out-of-sample vendor repos,
+#: and the ten fixtures -- it matches exactly one file it did not match
+#: before, and that file is the Wan delta. The row that had to be checked is
+#: dit-adaln, whose ``cross_attn_k_proj`` marker contains ``cross_attn`` and
+#: which sits *below* this one: it lost nothing.
 _FAMILY_MARKERS = (
     ("lora:flux", ("double_blocks", "single_blocks",
                    "single_transformer_blocks"), ()),
-    ("lora:wan", ("ffn",), ("diffusion_model.blocks.",)),
+    ("lora:wan", ("ffn",), ("blocks.", "cross_attn")),
     ("lora:dit-adaln", ("adaln_modulation", "cross_attn_k_proj"), ()),
     ("lora:sdxl", ("input_blocks", "output_blocks", "middle_block",
                    "down_blocks", "up_blocks", "mid_block"), ()),

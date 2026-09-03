@@ -72,6 +72,55 @@ against a 16 KB package. **Do not truncate them**: a shortened list hides
 exactly the bug this module has been fixed for twice, where a marker sits past
 a scan window.
 
+## Decision: the rows were checked again on headers they did not choose
+
+The ten headers above cannot show that the Flux and Wan rows *generalise* —
+they were picked while those rows were being written. So a second, independent
+batch was pulled the same way, afterwards, and checked against a ground truth
+the classifier had no part in choosing: **the uploader's own `base_model:` tag**
+on HuggingFace, i.e. what the person who trained the delta says they trained it
+on. Fifty-nine repositories, which collapse to **23 distinct key lists** — a
+`ntc-ai` slider and its five siblings are one structure, not six, and counting
+them as six would have overstated the evidence.
+
+**54 of 59 agree with the tag, and not one file was given a wrong family.**
+Every disagreement landed on `unknown` or `lora:unknown`. For this package that
+is the property that matters: a wrong family is a silent failure at load time,
+`unknown` is a question.
+
+The five disagreements, each recorded in `tests/fixtures/oos_families.json.gz`:
+
+- **The Wan row was too strict, and is now looser.** A real Wan 2.2 delta
+  writing `blocks.N.cross_attn...` fell through to `lora:unknown` purely
+  because it lacked the `diffusion_model.` prefix. The row now asks for
+  `blocks.` and `cross_attn` with `ffn`, and `ffn` is still what separates it
+  from the adaln lineage. This was measured before it was written: across
+  **335 real headers** — 266 local files, the 59 out-of-sample repos, and the
+  ten fixtures — the looser pair matches **exactly one** file it did not match
+  before, and that file is the Wan delta. dit-adaln, which sits *below* Wan and
+  whose `cross_attn_k_proj` marker contains `cross_attn`, lost nothing. The
+  fixture keeps `AX1Y2JP/anima_extracted_lora` as the near-miss that pins it:
+  two of the three conditions met, held out by the absence of `ffn` alone.
+- **A FLUX.2 Klein delta and a Qwen-Image delta ship the identical shape.**
+  Both are `transformer.transformer_blocks.N.attn.to_k.lora...` with no
+  `single_transformer_blocks` and no `add_k_proj`. They are different families
+  and the header does not distinguish them. Both stay `lora:unknown`; a rule
+  naming either would name the other wrong. This is the same shape the first
+  fixture already pinned in `flymy-ai/qwen-image-realism-lora` — what was one
+  oddity is now a class, confirmed from two families.
+- **Wan 2.1 in the PEFT layout stays unknown on purpose.**
+  `base_model.model.blocks.N.attn1.to_k.lora_A`, no `ffn`, no `cross_attn`.
+  Telling it from a diffusers-layout SDXL delta would need negative evidence —
+  `blocks` but no `down_blocks` — weaker than anything else in the table.
+- **Full models outside SDXL have no kind.** A merged FLUX.1 model carries
+  `double_blocks` and `single_blocks`, so its family is not in doubt, but it is
+  not a delta and there is no `flux-checkpoint` beside `sdxl-checkpoint`. It
+  returns plain `unknown`. Recorded so the asymmetry stays visible.
+
+The eight SDXL structures from that batch are deliberately **not** in the
+fixture: SDXL is the best-covered row, unchanged by any of this, and those
+eight were over half the bytes.
+
 ## Decision: `unknown` is a real answer
 
 `lora:unknown` means "definitely a delta, target family not recognised". It is

@@ -52,8 +52,8 @@ The tensor table does not lie. An SDXL UNet delta has the UNet block names, in
 whichever spelling its trainer used — `input_blocks` / `output_blocks` /
 `middle_block`, or `down_blocks` / `up_blocks` / `mid_block`. A Cosmos-style
 DiT delta has `adaln_modulation`. Flux has `double_blocks` / `single_blocks`,
-or `single_transformer_blocks` from diffusers. Wan has
-`diffusion_model.blocks.` with `ffn`. Qwen-Image has `transformer_blocks` with
+or `single_transformer_blocks` from diffusers. Wan has `blocks.`
+and `cross_attn` with `ffn`. Qwen-Image has `transformer_blocks` with
 an `add_k_proj` text branch. Those names come from the code that produced the
 weights.
 
@@ -63,6 +63,15 @@ by which substrings actually separate the families on that evidence — Flux and
 Qwen share `add_k_proj`, Wan and the adaln lineage share
 `diffusion_model.blocks.`, and every SDXL LoRA carries `transformer_blocks`.
 The headers are committed as a fixture.
+
+Those ten were chosen while the rules were being written, so they cannot show
+the rules generalise. A second batch was pulled afterwards and checked against
+a judgement the classifier had no part in making — the uploader's own
+`base_model` tag. Across 59 repositories (23 distinct key layouts), 54 agree
+and **not one file was given a wrong family**: every disagreement came back
+`unknown`. Four of those are pinned as `unknown` on purpose, including a
+FLUX.2 and a Qwen-Image delta that ship byte-identical key shapes — naming
+either one would name the other wrong. That batch is a second fixture.
 
 ## The ordering trap
 

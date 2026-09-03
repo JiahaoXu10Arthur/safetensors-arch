@@ -340,3 +340,62 @@ def test_a_delta_whose_increment_is_spelled_down_weight_is_still_a_delta(tmp_pat
     kind, why = detect(p)
     assert kind == "lora:flux"
     assert "delta weights" in why
+
+
+def _oos_families():
+    import gzip
+    import pathlib
+    f = pathlib.Path(__file__).parent / "fixtures" / "oos_families.json.gz"
+    return json.loads(gzip.decompress(f.read_bytes()))["samples"]
+
+
+@pytest.mark.parametrize("s", _oos_families(), ids=lambda s: s["source"])
+def test_out_of_sample_headers_classify_as_recorded(s, tmp_path):
+    """Headers found *after* the Flux and Wan rows were written.
+
+    real_families.json.gz cannot show that those rows generalise: they were
+    picked while the rows were being written. These were checked against a
+    ground truth the classifier had no part in choosing -- the uploader's own
+    base_model tag -- and four of them are recorded as unknown because unknown
+    is the correct answer, not because the table is incomplete.
+    """
+    p = _from_keys(tmp_path, s["keys"], s.get("modelspec_architecture"),
+                   name=s["source"].replace("/", "_") + ".st")
+    assert detect(p)[0] == s["expect"]
+
+
+def test_the_adaln_near_miss_does_not_read_as_wan(tmp_path):
+    """The Wan row asks for blocks. + cross_attn + ffn. This real Anima delta
+    carries diffusion_model.blocks. AND cross_attn -- two of the three -- and
+    stays dit-adaln only because it has no ffn. Wan sits above dit-adaln, so
+    this is the file that would break first if the markers or the order drift.
+    """
+    near = [s for s in _oos_families() if s["expect"] == "lora:dit-adaln"]
+    assert near, "fixture should keep a dit-adaln near-miss"
+    for s in near:
+        joined = "\n".join(s["keys"])
+        assert "cross_attn" in joined and "blocks." in joined
+        assert "ffn" not in joined
+        p = _from_keys(tmp_path, s["keys"], s.get("modelspec_architecture"),
+                       name="nearmiss.st")
+        assert detect(p)[0] == "lora:dit-adaln"
+
+
+def test_transformer_blocks_alone_names_no_family_in_either_direction(tmp_path):
+    """A FLUX.2 Klein delta and a Qwen-Image delta ship the identical shape:
+    transformer.transformer_blocks.N.attn..., no single_transformer_blocks and
+    no add_k_proj. They are different families. Any rule that named one would
+    name the other wrong, so both must stay lora:unknown -- this is the pair
+    that keeps transformer_blocks out of the table."""
+    pair = [s for s in _oos_families()
+            if s["expect"] == "lora:unknown"
+            and "transformer_blocks" in "\n".join(s["keys"])
+            and "add_k_proj" not in "\n".join(s["keys"])
+            and "single_transformer_blocks" not in "\n".join(s["keys"])]
+    assert len(pair) >= 2, "the ambiguous pair is the point of this test"
+    assert len({s["base_model_tag"].split("/")[0] for s in pair}) > 1, \
+        "the pair must come from two different base models"
+    for s in pair:
+        p = _from_keys(tmp_path, s["keys"], s.get("modelspec_architecture"),
+                       name=s["source"].replace("/", "_") + ".st")
+        assert detect(p)[0] == "lora:unknown"
