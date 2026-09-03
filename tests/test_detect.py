@@ -399,3 +399,76 @@ def test_transformer_blocks_alone_names_no_family_in_either_direction(tmp_path):
         p = _from_keys(tmp_path, s["keys"], s.get("modelspec_architecture"),
                        name=s["source"].replace("/", "_") + ".st")
         assert detect(p)[0] == "lora:unknown"
+
+
+def _full_models():
+    import gzip
+    import pathlib
+    f = pathlib.Path(__file__).parent / "fixtures" / "full_models.json.gz"
+    return json.loads(gzip.decompress(f.read_bytes()))["samples"]
+
+
+@pytest.mark.parametrize("s", _full_models(),
+                         ids=lambda s: s["source"] + ":" + s["file"].split("/")[-1])
+def test_full_model_headers_classify_as_recorded(s, tmp_path):
+    """Real checkpoints, both packaging conventions per family.
+
+    ComfyUI ships one diffusion-model file and diffusers ships a sharded
+    transformer/ directory; the two do not carry the same top-level prefixes.
+    A row fitted to one of them passes its own tests and fails half its users.
+    """
+    p = _from_keys(tmp_path, s["keys"], s.get("modelspec_architecture"),
+                   name=s["file"].split("/")[-1])
+    assert detect(p)[0] == s["expect"]
+
+
+def test_no_real_header_matches_two_checkpoint_rows(tmp_path):
+    """The checkpoint rows are documented as order-independent. That is a claim
+    about the evidence, not a wish: it holds only while no real header satisfies
+    two rows at once. If one ever does, the order silently starts deciding and
+    this is where it shows up."""
+    from safetensors_arch import _CHECKPOINT_MARKERS
+    for s in _full_models() + _oos_families() + _real_families():
+        top = {k.split(".")[0] for k in s["keys"]}
+        matched = [kind for kind, need in _CHECKPOINT_MARKERS if need <= top]
+        assert len(matched) <= 1, "%s matches %s" % (s["source"], matched)
+
+
+def test_a_flux_delta_is_not_read_as_a_flux_checkpoint(tmp_path):
+    """The ordering trap in its newest shape.
+
+    No sampled vendor delta carries both double_blocks and single_blocks as
+    top-level prefixes -- XLabs writes only double_blocks, kohya folds the whole
+    path into one underscored prefix -- so the real files do not currently reach
+    the flux-checkpoint row at all. That is an observation about today's
+    trainers, not a guarantee, so the guarantee is tested directly: a delta
+    carrying both prefixes must still be a delta, because the delta question is
+    asked first.
+    """
+    real = [s for s in _real_families()
+            if s["expect"] == "lora:flux"
+            and "double_blocks" in {k.split(".")[0] for k in s["keys"]}]
+    assert real, "fixture should hold a Flux delta with a bare block prefix"
+    for s in real:
+        p = _from_keys(tmp_path, s["keys"], name=s["source"].replace("/", "_") + ".st")
+        assert detect(p)[0] == "lora:flux"
+
+    both = write(tmp_path, [
+        "double_blocks.0.img_attn.proj.lora_down.weight",
+        "double_blocks.0.img_attn.proj.lora_up.weight",
+        "single_blocks.0.linear1.lora_down.weight",
+        "single_blocks.0.linear1.lora_up.weight",
+    ], name="both_prefixes.safetensors")
+    kind, why = detect(both)
+    assert kind == "lora:flux", why
+    assert "delta" in why
+
+
+def test_a_delta_is_loadable_on_its_own_family_and_not_on_a_neighbour():
+    """Each new checkpoint kind is only useful if is_compatible knows it."""
+    for lora, base in (("lora:flux", "flux-checkpoint"),
+                       ("lora:wan", "wan-checkpoint"),
+                       ("lora:qwen-image", "qwen-image-checkpoint")):
+        assert is_compatible(lora, base) is True
+        assert is_compatible(lora, "sdxl-checkpoint") is False
+    assert is_compatible("lora:sdxl", "flux-checkpoint") is False

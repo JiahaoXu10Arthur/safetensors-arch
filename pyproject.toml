@@ -1,6 +1,6 @@
 [project]
 name = "safetensors-arch"
-version = "0.2.1"
+version = "0.3.0"
 description = "Tell what a .safetensors file actually is, by its tensor table — not its filename or vendor metadata."
 readme = "README.md"
 authors = [{ name = "Jiahao Xu" }]

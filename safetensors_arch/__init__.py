@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 __all__ = ["read_header", "detect", "Result", "HEADER_LIMIT"]
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 #: Refuse to read a "header" larger than this; a real one is kilobytes.
 HEADER_LIMIT = 100 * 1024 * 1024
@@ -113,6 +113,30 @@ _DECLARED_FAMILIES = (
     ("stable-diffusion-xl", "lora:sdxl"),
 )
 
+#: Full models, matched on *top-level key prefixes* -- the segment before the
+#: first dot -- not on substrings. A checkpoint carries whole subtrees, so the
+#: prefixes are the honest evidence, and a substring test would collide with
+#: the delta vocabulary immediately.
+#:
+#: These rows were read off real headers pulled over HTTP Range, one per
+#: packaging convention, because the two conventions do not agree: ComfyUI
+#: ships a single diffusion-model file, diffusers ships a sharded transformer/
+#: directory, and a rule fitted to one silently fails the other.
+#:
+#: Order is not load-bearing here -- no real header matched two rows, and a
+#: test pins that -- but the rows are still tried in a fixed order so a future
+#: overlap surfaces as a changed answer rather than as dict ordering.
+#:
+#: The adaln lineage is NOT in this table. It is decided before it, on a
+#: substring, because that is the shape its evidence has.
+_CHECKPOINT_MARKERS = (
+    ("sdxl-checkpoint", frozenset(("model", "conditioner", "first_stage_model"))),
+    ("flux-checkpoint", frozenset(("double_blocks", "single_blocks"))),
+    ("wan-checkpoint", frozenset(("blocks", "patch_embedding", "time_projection"))),
+    ("qwen-image-checkpoint",
+     frozenset(("transformer_blocks", "time_text_embed", "txt_norm"))),
+)
+
 Result = Tuple[str, str]
 """``(kind, why)``. ``why`` is a human-readable sentence, meant to be shown."""
 
@@ -163,8 +187,8 @@ def detect(path) -> Result:
         ``single_transformer_blocks`` (diffusers) -- and decided before
         Qwen, which it would otherwise be mistaken for.
     ``lora:wan``
-        Delta weights over a Wan video DiT: ``diffusion_model.blocks.`` with
-        ``ffn``. The prefix alone is shared with the adaln lineage; ``ffn``
+        Delta weights over a Wan video DiT: ``blocks.`` and ``cross_attn``
+        with ``ffn``. Both prefixes are shared with the adaln lineage; ``ffn``
         is what separates them.
     ``lora:qwen-image``
         Delta weights over the Qwen-Image DiT: ``transformer_blocks`` with an
@@ -177,8 +201,19 @@ def detect(path) -> Result:
     ``sdxl-checkpoint``
         A full SDXL-family checkpoint: ``model.`` + ``conditioner.`` +
         ``first_stage_model.``.
+    ``flux-checkpoint``
+        A full Flux DiT: ``double_blocks.`` + ``single_blocks.``.
+    ``wan-checkpoint``
+        A full Wan video DiT: ``blocks.`` + ``patch_embedding.`` +
+        ``time_projection.``.
+    ``qwen-image-checkpoint``
+        A full Qwen-Image DiT: ``transformer_blocks.`` + ``time_text_embed.``
+        + ``txt_norm.``.
     ``unknown``
-        Not recognised, or not readable as safetensors.
+        Not recognised, or not readable as safetensors. A middle shard of a
+        sharded diffusers checkpoint lands here on purpose: shards 2..n-1 of
+        Qwen-Image carry nothing but ``transformer_blocks``, which names no
+        family, and the file genuinely does not say what it belongs to.
 
     The second element of the tuple always explains the decision, including
     the tensor count, so a wrong answer can be argued with.
@@ -247,10 +282,10 @@ def detect(path) -> Result:
         return ("dit-adaln",
                 "%d tensors with adaln_modulation_cross_attn and no delta "
                 "markers (full DiT)" % len(keys))
-    if {"model", "conditioner", "first_stage_model"} <= top:
-        return ("sdxl-checkpoint",
-                "%d tensors; model. + conditioner. + first_stage_model. "
-                "(full SDXL-family checkpoint)" % len(keys))
+    for kind, need in _CHECKPOINT_MARKERS:
+        if need <= top:
+            return (kind, "%d tensors; top-level %s and no delta markers%s"
+                    % (len(keys), " + ".join(sorted(need)), note))
     return "unknown", "%d tensors; top-level prefixes %s" % (
         len(keys), sorted(top)[:4])
 
@@ -265,6 +300,9 @@ def is_compatible(lora_kind: str, base_kind: str) -> Optional[bool]:
     pairs = {
         ("lora:sdxl", "sdxl-checkpoint"): True,
         ("lora:dit-adaln", "dit-adaln"): True,
+        ("lora:flux", "flux-checkpoint"): True,
+        ("lora:wan", "wan-checkpoint"): True,
+        ("lora:qwen-image", "qwen-image-checkpoint"): True,
     }
     if lora_kind.startswith("lora:") and base_kind and not base_kind.startswith("lora:"):
         if (lora_kind, base_kind) in pairs:

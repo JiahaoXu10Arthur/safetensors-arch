@@ -121,6 +121,54 @@ The eight SDXL structures from that batch are deliberately **not** in the
 fixture: SDXL is the best-covered row, unchanged by any of this, and those
 eight were over half the bytes.
 
+## Decision: full models get a family too, matched on prefixes not substrings
+
+Until 0.3.0 only SDXL and the adaln lineage had a full-model kind. A merged
+FLUX.1 model carrying `double_blocks` and `single_blocks` — its family not in
+any doubt — came back plain `unknown`, because there was no `flux-checkpoint`
+to return. `AX1Y2JP/FLUX.1-schnell-krea-lora-merged` in the out-of-sample batch
+is the file that found that asymmetry, and it is kept in the fixture.
+
+Full models are matched on **top-level key prefixes** — the segment before the
+first dot — not on substrings. A checkpoint carries whole subtrees, so the
+prefixes are the honest evidence; a substring test would collide with the delta
+vocabulary immediately.
+
+| top-level prefixes | FLUX | WAN | QWEN | SDXL ckpt | 266 local deltas |
+|---|---|---|---|---|---|
+| `double_blocks` + `single_blocks` | **1/1** | 0/2 | 0/2 | 0/2 | 0/266 |
+| `blocks` + `patch_embedding` + `time_projection` | 0/1 | **2/2** | 0/2 | 0/2 | 0/266 |
+| `transformer_blocks` + `time_text_embed` + `txt_norm` | 0/1 | 0/2 | **2/2** | 0/2 | 0/266 |
+| `model` + `conditioner` + `first_stage_model` | 0/1 | 0/2 | 0/2 | **2/2** | 0/266 |
+
+Two things that were not guessable:
+
+- **Every family has to be sampled in both packaging conventions.** ComfyUI
+  ships one diffusion-model file; diffusers ships a sharded `transformer/`
+  directory. They do not carry the same prefixes — the ComfyUI repackaging of
+  Wan 2.1 adds `img_emb` and `control_adapter` that the diffusers one lacks. A
+  row fitted to one convention passes its own tests and fails half its users,
+  so both are in `tests/fixtures/full_models.json.gz` for every family that has
+  both.
+- **A middle shard of a sharded checkpoint is correctly `unknown`.** Shards 3
+  and 5 of Qwen-Image's nine carry nothing but `transformer_blocks` — the
+  substring this document already established names no family, since every SDXL
+  LoRA carries it. Shard 1 answers because it holds the embedding subtrees;
+  shards 2..n-1 genuinely do not say what they belong to. Three of them are
+  pinned as `unknown` in the fixture so nobody "fixes" it later by guessing
+  from `transformer_blocks` — a guess that would be wrong on SDXL and on the
+  FLUX.2 delta two sections above.
+
+The rows are disjoint on every real header held here, so their order does not
+decide anything; a test asserts that rather than trusting it, because the
+moment two rows overlap the order starts deciding silently.
+
+The delta question is still asked first, and it has to be. A Flux delta's
+top-level prefixes are `double_blocks` — one half of the `flux-checkpoint`
+row. No sampled vendor delta carries both halves, but that is an observation
+about today's trainers and not a guarantee, so the guarantee is tested
+directly with a delta that carries both.
+
 ## Decision: `unknown` is a real answer
 
 `lora:unknown` means "definitely a delta, target family not recognised". It is

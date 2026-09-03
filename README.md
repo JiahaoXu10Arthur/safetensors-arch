@@ -7,7 +7,8 @@ not its filename and not the metadata the model host attached to it.
 
 ```console
 $ python -m safetensors_arch models/loras/
-base_v10.safetensors  sdxl-checkpoint     2515 tensors; model. + conditioner. + first_stage_model. (full SDXL-family checkpoint)
+base_v10.safetensors  sdxl-checkpoint     2515 tensors; top-level conditioner + first_stage_model + model and no delta markers
+flux1-schnell.safeten flux-checkpoint     776 tensors; top-level double_blocks + single_blocks and no delta markers (trainer declared flux.1-schnell)
 style-a.safetensors   lora:sdxl           2958 tensors of delta weights; keys carry down_blocks / up_blocks / mid_block (trainer declared stable-diffusion-xl/lora)
 style-b.safetensors   lora:dit-adaln      1428 tensors of delta weights; keys carry cross_attn_k_proj (trainer declared anima-preview/lora)
 ```
@@ -130,15 +131,31 @@ and no key-based test has recognised the family, where the alternative is
 |---|---|
 | `lora:sdxl` | delta over an SDXL-family UNet (SDXL, Pony, Illustrious, NoobAI…) |
 | `lora:dit-adaln` | delta over an adaptive-layernorm cross-attention DiT |
+| `lora:flux` | delta over a Flux DiT |
+| `lora:wan` | delta over a Wan video DiT |
 | `lora:qwen-image` | delta over the Qwen-Image DiT |
 | `lora:unknown` | definitely a delta, family not recognised |
 | `sdxl-checkpoint` | full SDXL-family checkpoint |
 | `dit-adaln` | full adaln cross-attention DiT |
+| `flux-checkpoint` | full Flux DiT |
+| `wan-checkpoint` | full Wan video DiT |
+| `qwen-image-checkpoint` | full Qwen-Image DiT |
 | `unknown` | not recognised, or not readable as safetensors |
 
-Adding a family is a couple of lines in `detect()` plus a test with a
-synthetic header. Pull requests welcome — especially ones that bring a real
-file's key list, since that is the only way the table grows correctly.
+Deltas are matched on substrings anywhere in the key list; full models are
+matched on top-level prefixes, because a checkpoint carries whole subtrees and
+a substring test would collide with the delta vocabulary at once.
+
+One case is `unknown` by design rather than by omission: a **middle shard** of
+a sharded diffusers checkpoint. Shards 2..n-1 of Qwen-Image carry nothing but
+`transformer_blocks`, which every SDXL LoRA carries too — the file genuinely
+does not say what it belongs to, and guessing would be wrong on two other
+families. Point it at shard 1, or at the ComfyUI single-file build.
+
+Adding a family is a row in one of the two marker tables plus a test. Pull
+requests welcome — especially ones that bring a real file's key list, since
+that is the only way the tables grow correctly, and for a full model, one key
+list per packaging convention: ComfyUI and diffusers do not agree.
 
 ## Prior art
 
